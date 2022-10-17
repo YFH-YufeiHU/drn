@@ -5,8 +5,8 @@ from PIL import Image
 from os import path as osp
 
 
-def compute_mean_std(data_dir, list_dir):
-    image_list_path = osp.join(list_dir, 'train_images.txt')
+def compute_mean_std(data_dir, list_dir,epoch):
+    image_list_path = osp.join(list_dir, 'val_images_{}.txt'.format(epoch))
     image_list = [line.strip() for line in open(image_list_path, 'r')]
     np.random.shuffle(image_list)
     pixels = []
@@ -18,17 +18,18 @@ def compute_mean_std(data_dir, list_dir):
     std = np.std(pixels, axis=0) / 255
     print(mean, std)
     info = {'mean': mean.tolist(), 'std': std.tolist()}
-    with open(osp.join(data_dir, 'info.json'), 'w') as fp:
+    with open(osp.join(data_dir, 'info_{}.json'.format(epoch)), 'w') as fp:
         json.dump(info, fp)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Compute mean and std of a dataset.')
-    parser.add_argument('data_dir', default='./', required=True,
+    parser.add_argument('--data_dir', default='./', required=True,
                         help='data folder where train_images.txt resides.')
-    parser.add_argument('list_dir', default=None, required=False,
+    parser.add_argument('--list_dir', default=None, required=False,
                         help='data folder where train_images.txt resides.')
+    parser.add_argument('--epoch', default=100, type=int)
     args = parser.parse_args()
     if args.list_dir is None:
         args.list_dir = args.data_dir
@@ -37,7 +38,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    compute_mean_std(args.data_dir, args.list_dir)
+    compute_mean_std(args.data_dir, args.list_dir, args.epoch)
 
 
 if __name__ == '__main__':

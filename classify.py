@@ -101,7 +101,7 @@ def run_training(args):
 
     # Data loading code
     traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    valdir = os.path.join(args.data)
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -178,7 +178,7 @@ def test_model(args):
     cudnn.benchmark = True
 
     # Data loading code
-    valdir = os.path.join(args.data, 'val')
+    valdir = os.path.join(args.data)
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -212,7 +212,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -257,12 +257,15 @@ def validate(args, val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
         # compute output
         output = model(input_var)
+
+        print('caca_in',output.size())
+
         loss = criterion(output, target_var)
 
         # measure accuracy and record loss

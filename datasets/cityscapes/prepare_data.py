@@ -117,11 +117,16 @@ def prepare_cityscape_submission(in_dir):
 
 
 def prepare_cityscape_training(in_dir):
+
     for root, dirs, filenames in os.walk(in_dir):
+        # print(root, dirs, filenames)
+        # exit()
         for name in filenames:
             parts = name.split('_')
-            if parts[-1] != 'labelIds.png':
+            if parts[-1] != 'label.png':
                 continue
+            # print(name)
+            # exit()
             parts[-1] = 'trainIds.png'
             out_name = '_'.join(parts)
             in_path = join(root, name)

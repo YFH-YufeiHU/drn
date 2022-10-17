@@ -6,6 +6,10 @@ import json
 import logging
 import math
 import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 from os.path import exists, join, split
 import threading
 
@@ -22,6 +26,8 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
+import time
+from tqdm import tqdm, trange
 
 import drn
 import data_transforms as transforms
@@ -80,7 +86,7 @@ def fill_up_weights(up):
 
 class DRNSeg(nn.Module):
     def __init__(self, model_name, classes, pretrained_model=None,
-                 pretrained=True, use_torch_up=False):
+                 pretrained=False, use_torch_up=False):
         super(DRNSeg, self).__init__()
         model = drn.__dict__.get(model_name)(
             pretrained=pretrained, num_classes=1000)
@@ -120,7 +126,7 @@ class DRNSeg(nn.Module):
 
 
 class SegList(torch.utils.data.Dataset):
-    def __init__(self, data_dir, phase, transforms, list_dir=None,
+    def __init__(self, data_dir, phase, transforms, epoch,list_dir=None,
                  out_name=False):
         self.list_dir = data_dir if list_dir is None else list_dir
         self.data_dir = data_dir
@@ -131,8 +137,12 @@ class SegList(torch.utils.data.Dataset):
         self.label_list = None
         self.bbox_list = None
         self.read_lists()
+        self.epoch=epoch
 
     def __getitem__(self, index):
+        print([join(self.data_dir, self.image_list[index]),join(self.data_dir, self.label_list[index])])
+        # print()
+        # exit()
         data = [Image.open(join(self.data_dir, self.image_list[index]))]
         if self.label_list is not None:
             data.append(Image.open(
@@ -148,8 +158,16 @@ class SegList(torch.utils.data.Dataset):
         return len(self.image_list)
 
     def read_lists(self):
-        image_path = join(self.list_dir, self.phase + '_images.txt')
-        label_path = join(self.list_dir, self.phase + '_labels.txt')
+        '''image_path = join(self.list_dir, self.phase + '_images.txt')
+        label_path = join(self.list_dir, self.phase + '_labels.txt')'''
+
+        '''image_path = join(self.list_dir, 'val_dict_test_gt.txt')
+        label_path = join(self.list_dir, 'val_dict_test_label.txt')'''
+
+        image_path = join(self.list_dir, 'val_images_{}.txt'.format(self.epoch))
+        label_path = join(self.list_dir, 'val_labels.txt')
+
+        print(image_path)
         assert exists(image_path)
         self.image_list = [line.strip() for line in open(image_path, 'r')]
         if exists(label_path):
@@ -158,7 +176,7 @@ class SegList(torch.utils.data.Dataset):
 
 
 class SegListMS(torch.utils.data.Dataset):
-    def __init__(self, data_dir, phase, transforms, scales, list_dir=None):
+    def __init__(self, data_dir, phase, transforms, scales, epoch,list_dir=None):
         self.list_dir = data_dir if list_dir is None else list_dir
         self.data_dir = data_dir
         self.phase = phase
@@ -166,12 +184,18 @@ class SegListMS(torch.utils.data.Dataset):
         self.image_list = None
         self.label_list = None
         self.bbox_list = None
+        self.epoch = epoch
         self.read_lists()
         self.scales = scales
 
+
     def __getitem__(self, index):
+
         data = [Image.open(join(self.data_dir, self.image_list[index]))]
         w, h = data[0].size
+
+        #print('cacatrue?',self.label_list)
+
         if self.label_list is not None:
             data.append(Image.open(
                 join(self.data_dir, self.label_list[index])))
@@ -180,18 +204,40 @@ class SegListMS(torch.utils.data.Dataset):
         ms_images = [self.transforms(data[0].resize((int(w * s), int(h * s)),
                                                     Image.BICUBIC))[0]
                      for s in self.scales]
+        
+        '''if self.label_list is None:
+            out_data.append(data[0][0, :, :])
+        out_data.append(self.image_list[index])'''
+        
+        #print('caca?',self.image_list[index])
+
         out_data.append(self.image_list[index])
+        
         out_data.extend(ms_images)
+        #print(len(out_data))
+        #exit()
         return tuple(out_data)
 
     def __len__(self):
         return len(self.image_list)
 
     def read_lists(self):
-        image_path = join(self.list_dir, self.phase + '_images.txt')
-        label_path = join(self.list_dir, self.phase + '_labels.txt')
+        '''image_path = join(self.list_dir, self.phase + '_images.txt')
+        label_path = join(self.list_dir, self.phase + '_labels.txt')'''
+
+        #image_path = join(self.list_dir, 'val_images_oracle.txt')
+        #label_path = join(self.list_dir, 'val_labels.txt')
+
+        #image_path = join(self.list_dir, 'val_dict_test_gt.txt')
+        #label_path = join(self.list_dir, 'val_dict_test_label.txt')
+        image_path = join(self.list_dir, 'val_images_{}.txt'.format(self.epoch))
+        label_path = join(self.list_dir, 'val_labels.txt')
+
         assert exists(image_path)
         self.image_list = [line.strip() for line in open(image_path, 'r')]
+
+        print('cacatrue2',exists(label_path))
+
         if exists(label_path):
             self.label_list = [line.strip() for line in open(label_path, 'r')]
             assert len(self.image_list) == len(self.label_list)
@@ -211,7 +257,7 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
                                torch.nn.modules.loss.MSELoss]:
             target = target.float()
         input = input.cuda()
-        target = target.cuda(async=True)
+        target = target.cuda()
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
@@ -294,7 +340,7 @@ def train(train_loader, model, criterion, optimizer, epoch,
             target = target.float()
 
         input = input.cuda()
-        target = target.cuda(async=True)
+        target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -465,6 +511,7 @@ def save_output_images(predictions, filenames, output_dir):
     If given a mini-batch tensor, will save the tensor as a grid of images.
     """
     # pdb.set_trace()
+
     for ind in range(len(filenames)):
         im = Image.fromarray(predictions[ind].astype(np.uint8))
         fn = os.path.join(output_dir, filenames[ind][:-4] + '.png')
@@ -495,7 +542,9 @@ def test(eval_data_loader, model, num_classes,
     data_time = AverageMeter()
     end = time.time()
     hist = np.zeros((num_classes, num_classes))
+    i=0
     for iter, (image, label, name) in enumerate(eval_data_loader):
+        print(name)
         data_time.update(time.time() - end)
         image_var = Variable(image, requires_grad=False, volatile=True)
         final = model(image_var)[0]
@@ -507,9 +556,21 @@ def test(eval_data_loader, model, num_classes,
             save_colorful_images(
                 pred, name, output_dir + '_color',
                 TRIPLET_PALETTE if num_classes == 3 else CITYSCAPE_PALETTE)
+
         if has_gt:
+            i+=1
             label = label.numpy()
             hist += fast_hist(pred.flatten(), label.flatten(), num_classes)
+
+            #hist_img = fast_hist(pred.flatten(), label.flatten(), num_classes)
+            #miou_img = (np.sum(hist)-np.sum(np.diag(hist_img)))/((np.sum(hist_img)))*100
+
+            miou = (np.sum(hist)-np.sum(np.diag(hist)))/((np.sum(hist)))*100
+
+            #print('cacamiou',miou_img,np.sum(hist_img),np.sum(np.diag(hist_img)))
+
+            logger.info('===> miou {miou:.3f}'.format(
+                miou=miou))
             logger.info('===> mAP {mAP:.3f}'.format(
                 mAP=round(np.nanmean(per_class_iu(hist)) * 100, 2)))
         end = time.time()
@@ -568,7 +629,7 @@ def test_ms(eval_data_loader, model, num_classes, scales,
     end = time.time()
     hist = np.zeros((num_classes, num_classes))
     num_scales = len(scales)
-    for iter, input_data in enumerate(eval_data_loader):
+    for iter, input_data in enumerate(tqdm(eval_data_loader,desc='Processing')):
         data_time.update(time.time() - end)
         if has_gt:
             name = input_data[2]
@@ -596,17 +657,26 @@ def test_ms(eval_data_loader, model, num_classes, scales,
         if has_gt:
             label = label.numpy()
             hist += fast_hist(pred.flatten(), label.flatten(), num_classes)
-            logger.info('===> mAP {mAP:.3f}'.format(
-                mAP=round(np.nanmean(per_class_iu(hist)) * 100, 2)))
-        end = time.time()
-        logger.info('Eval: [{0}/{1}]\t'
-                    'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                    'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                    .format(iter, len(eval_data_loader), batch_time=batch_time,
-                            data_time=data_time))
+
+            miou = (np.sum(np.diag(hist)))/((np.sum(hist)))*100
+
+            #print('cacamiou',miou_img,np.sum(hist_img),np.sum(np.diag(hist_img)))
+
+            # logger.info('===> miou {miou:.3f}'.format(
+            #     miou=miou))
+            #
+            # logger.info('===> mAP {mAP:.3f}'.format(
+            #     mAP=round(np.nanmean(per_class_iu(hist)) * 100, 2)))
+        # end = time.time()
+        # logger.info('Eval: [{0}/{1}]\t'
+        #             'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+        #             'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+        #             .format(iter, len(eval_data_loader), batch_time=batch_time,
+        #                     data_time=data_time))
     if has_gt: #val
+
         ious = per_class_iu(hist) * 100
-        logger.info(' '.join('{:.03f}'.format(i) for i in ious))
+        print(' '.join('{:.03f}'.format(i) for i in ious))
         return round(np.nanmean(ious), 2)
 
 
@@ -624,63 +694,75 @@ def test_seg(args):
         single_model.load_state_dict(torch.load(args.pretrained))
     model = torch.nn.DataParallel(single_model).cuda()
 
-    data_dir = args.data_dir
-    info = json.load(open(join(data_dir, 'info.json'), 'r'))
-    normalize = transforms.Normalize(mean=info['mean'], std=info['std'])
-    scales = [0.5, 0.75, 1.25, 1.5, 1.75]
-    if args.ms:
-        dataset = SegListMS(data_dir, phase, transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ]), scales, list_dir=args.list_dir)
-    else:
-        dataset = SegList(data_dir, phase, transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ]), list_dir=args.list_dir, out_name=True)
-    test_loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        pin_memory=False
-    )
-
-    cudnn.benchmark = True
-
-    # optionally resume from a checkpoint
-    start_epoch = 0
-    if args.resume:
-        if os.path.isfile(args.resume):
-            logger.info("=> loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-            start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'])
-            logger.info("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+    best_miou = [0.,0]
+    epochs = [5+i*5 for i in range(40)]
+    for i,epoch in enumerate(epochs):
+        print(epoch)
+        args.epoch = epoch
+        data_dir = args.data_dir
+        info = json.load(open(join(data_dir, 'info_{}.json'.format(args.epoch)), 'r'))
+        normalize = transforms.Normalize(mean=info['mean'], std=info['std'])
+        scales = [0.5, 0.75, 1.25, 1.5, 1.75]
+        if args.ms:
+            dataset = SegListMS(data_dir, phase, transforms.Compose([
+                transforms.ToTensor(),
+                normalize,
+            ]), scales, list_dir=args.list_dir,epoch = args.epoch)
         else:
-            logger.info("=> no checkpoint found at '{}'".format(args.resume))
+            # print(data_dir,phase)
+            # exit()
+            dataset = SegList(data_dir, phase, transforms.Compose([
+                transforms.ToTensor(),
+                normalize,
+            ]), list_dir=args.list_dir, out_name=True)
 
-    out_dir = '{}_{:03d}_{}'.format(args.arch, start_epoch, phase)
-    if len(args.test_suffix) > 0:
-        out_dir += '_' + args.test_suffix
-    if args.ms:
-        out_dir += '_ms'
+        test_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=batch_size, shuffle=False, num_workers=num_workers,
+            pin_memory=False
+        )
 
-    if args.ms:
-        mAP = test_ms(test_loader, model, args.classes, save_vis=True,
-                      has_gt=phase != 'test' or args.with_gt,
-                      output_dir=out_dir,
-                      scales=scales)
-    else:
-        mAP = test(test_loader, model, args.classes, save_vis=True,
-                   has_gt=phase != 'test' or args.with_gt, output_dir=out_dir)
-    logger.info('mAP: %f', mAP)
+        cudnn.benchmark = True
+
+        # optionally resume from a checkpoint
+        start_epoch = 0
+        if args.resume:
+            if os.path.isfile(args.resume):
+                logger.info("=> loading checkpoint '{}'".format(args.resume))
+                checkpoint = torch.load(args.resume)
+                start_epoch = checkpoint['epoch']
+                best_prec1 = checkpoint['best_prec1']
+                model.load_state_dict(checkpoint['state_dict'])
+                logger.info("=> loaded checkpoint '{}' (epoch {})"
+                      .format(args.resume, checkpoint['epoch']))
+            else:
+                logger.info("=> no checkpoint found at '{}'".format(args.resume))
+
+        out_dir = '{}_{:03d}_{}'.format(args.arch, start_epoch, phase)
+        if len(args.test_suffix) > 0:
+            out_dir += '_' + args.test_suffix
+        if args.ms:
+            out_dir += '_ms'
+
+        if args.ms:
+            mAP = test_ms(test_loader, model, args.classes, save_vis=False,
+                          has_gt=phase != 'test' or args.with_gt,
+                          output_dir=out_dir,
+                          scales=scales)
+        else:
+            mAP = test(test_loader, model, args.classes, save_vis=True,
+                       has_gt=phase != 'test' or args.with_gt, output_dir=out_dir)
+        print('Epoch{}==>mAP: %f'.format(args.epoch), mAP)
+        if mAP>best_miou[0]:
+            best_miou[0]=mAP
+            best_miou[1]=epoch
+    print('best_miou={},epoch={}'.format(best_miou[0],best_miou[1]))
 
 
 def parse_args():
     # Training settings
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('cmd', choices=['train', 'test'])
+    parser.add_argument('--cmd', choices=['train', 'test'])
     parser.add_argument('-d', '--data-dir', default=None, required=True)
     parser.add_argument('-l', '--list-dir', default=None,
                         help='List dir to look for train_images.txt etc. '
@@ -689,7 +771,7 @@ def parse_args():
     parser.add_argument('-s', '--crop-size', default=0, type=int)
     parser.add_argument('--step', type=int, default=200)
     parser.add_argument('--arch')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=1, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
@@ -723,6 +805,7 @@ def parse_args():
                         help='Turn on multi-scale testing')
     parser.add_argument('--with-gt', action='store_true')
     parser.add_argument('--test-suffix', default='', type=str)
+    parser.add_argument('--epoch', default=100, type=int)
     args = parser.parse_args()
 
     assert args.classes > 0
