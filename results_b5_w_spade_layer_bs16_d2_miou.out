@@ -1,0 +1,35 @@
+segment.py --cmd test -d ./datasets/cityscapes -l ./datasets/cityscapes --arch drn_d_105 -c 19 -e --pretrained ./drn-d-105_ms_cityscapes.pth --ms
+Namespace(arch='drn_d_105', batch_size=1, bn_sync=False, classes=19, cmd='test', crop_size=0, data_dir='./datasets/cityscapes', epoch=100, epochs=10, evaluate=True, list_dir='./datasets/cityscapes', load_rel=None, lr=0.01, lr_mode='step', momentum=0.9, ms=True, phase='val', pretrained='./drn-d-105_ms_cityscapes.pth', random_rotate=0, random_scale=0, resume='', save_iter=1, save_path='', step=200, test_suffix='', weight_decay=0.0001, with_gt=False, workers=8)
+cmd : test
+data_dir : ./datasets/cityscapes
+list_dir : ./datasets/cityscapes
+classes : 19
+crop_size : 0
+step : 200
+arch : drn_d_105
+batch_size : 1
+epochs : 10
+lr : 0.01
+lr_mode : step
+momentum : 0.9
+weight_decay : 0.0001
+evaluate : True
+resume : 
+pretrained : ./drn-d-105_ms_cityscapes.pth
+save_path : 
+save_iter : 1
+workers : 8
+load_rel : None
+phase : val
+random_scale : 0
+random_rotate : 0
+bn_sync : False
+ms : True
+with_gt : False
+test_suffix : 
+epoch : 100
+5
+cacatrue2 True
+97.951 84.313 90.196 55.724 58.500 45.483 43.481 56.725 90.373 72.384 93.077 68.820 47.144 91.761 75.555 79.883 43.632 46.357 65.127
+Epoch5==>mAP: %f 68.76
+10

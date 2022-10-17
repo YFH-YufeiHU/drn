@@ -695,7 +695,7 @@ def test_seg(args):
     model = torch.nn.DataParallel(single_model).cuda()
 
     best_miou = [0.,0]
-    epochs = [5+i*5 for i in range(40)]
+    epochs = [5+i*5 for i in range(41)]
     for i,epoch in enumerate(epochs):
         print(epoch)
         args.epoch = epoch
